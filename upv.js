@@ -7,10 +7,10 @@ var VSHADER_SOURCE =
   'attribute vec2 a_TexCoord;\n' +
   'varying vec2 v_TexCoord;\n' +
   'uniform mat4 u_ViewMatrix;\n' +
-  'uniform mat4 u_ModelMatrix;\n' +
+  'uniform mat4 u_MvpMatrix;\n' +
   'uniform mat4 u_ProjMatrix;\n' +
   'void main() {\n' +
-  '  gl_Position = u_ModelMatrix * a_Position;\n' +
+  '  gl_Position = u_MvpMatrix * a_Position;\n' +
 //'  gl_Position = u_ModelMatrix * u_ViewMatrix * a_Position;\n' +
 //'  gl_Position = u_ModelMatrix * u_ViewMatrix * u_ProjMatrix * a_Position;\n' +
   '  v_Color = a_Color;\n' +
@@ -68,6 +68,158 @@ var image1;
 var image2;
 var image3;
 //var gl;
+var viewProjMatrix = new Matrix4();;
+
+var g_modelMatrix = new Matrix4(), g_mvpMatrix = new Matrix4();
+
+var g_matrixStack = []; // Array for storing a matrix
+function pushMatrix(m) { // Store the specified matrix to the array
+  var m2 = new Matrix4(m);
+  g_matrixStack.push(m2);
+}
+
+function popMatrix() { // Retrieve the matrix from the array
+  return g_matrixStack.pop();
+}
+
+//Variables de la camara------------------------------------------------------------------------------
+//CAMARA-------------------------------------------------------------------------------------------
+function F3dVector(x,y,z){
+   var SF3dVector = {
+       x: x,
+       y: y,
+       z: z
+   };
+
+   return SF3dVector;
+}
+
+function GetF3dVectorLength(v){
+   var result = Math.sqrt(Math.pow(v.x,2)+ Math.pow(v.y,2) + Math.pow(v.z,2));
+   return result;
+}
+
+function Normalize3dVector(v) {
+    console.log(v.x);
+    console.log(v.y);
+    console.log(v.z);
+   var result = F3dVector(0.0, 0.0, 0.0);
+   var l = GetF3dVectorLength(v);
+
+   if (l != 0.0) {
+       result.x = v.x / l;
+       result.y = v.y / l;
+       result.z = v.z / l;
+       return result;
+   }
+}
+
+function suma(v, u){
+   var result = F3dVector(0.0, 0.0, 0.0);
+   result.x = v.x + u.x;
+   result.y = v.y + u.y;
+   result.z = v.z + u.z;
+   return result;
+}
+
+function resta(v, u){
+   var result = F3dVector(0.0, 0.0, 0.0);
+   result.x = v.x - u.x;
+   result.y = v.y - u.y;
+   result.z = v.z - u.z;
+   return result;
+}
+
+function multiplicar(v, r){
+   var result = F3dVector(0.0, 0.0, 0.0);
+   result.x = v.x * r;
+   result.y = v.y * r;
+   result.z = v.z * r;
+   return result;
+}
+
+function ProductoCruzado(u, v){
+   var result = F3dVector(0.0, 0.0, 0.0);
+   result.x = u.y * v.z - u.z * v.y;
+   result.y = u.z * v.x - u.x * v.z;
+   result.z = u.x * v.y - u.y * v.x;
+   return result;
+}
+
+function multiplicar_F3d(v, u){
+   var result = 0.0;
+   result = v.x * u.x + v.y * u.y + v.z * u.z;
+   return result;
+}
+
+var Position = F3dVector(0.0, 0.0, 0.0);
+var ViewDir = F3dVector(0.0, 0.0, -1.0);
+var RightVector = F3dVector(1.0, 0.0, 0.0);
+var UpVector = F3dVector(0.0, 1.0, 0.0);
+var Direction = F3dVector(0.0, 0.0, 3.0);
+
+var RotatedX = 0.0;
+var RotatedY = 0.0;
+var RotatedZ = 0.0;
+const PI = 3.1415926535897932384626433832795;
+var PIdiv180 = PI / 180.0;
+
+function RotateX(angulo){
+    RotatedX += angulo;
+    var temp1 = F3dVector(0.0, 0.0, 0.0);
+    temp1 = multiplicar(ViewDir, Math.cos(angulo*PIdiv180));
+
+    var temp2 = F3dVector(0.0, 0.0, 0.0);
+    temp2 = multiplicar(UpVector , Math.sin(angulo*PIdiv180));
+
+    ViewDir = Normalize3dVector(suma(temp1, temp2));
+
+    UpVector = multiplicar(ProductoCruzado(ViewDir, RightVector), -1);
+}
+
+function RotateY(angulo){
+    RotatedY += angulo;
+    var temp1 = F3dVector(0.0, 0.0, 0.0);
+    temp1 = multiplicar(ViewDir, Math.cos(angulo*PIdiv180));
+
+    var temp2 = F3dVector(0.0, 0.0, 0.0);
+    temp2 = multiplicar(RightVector , Math.sin(angulo*PIdiv180));
+
+    ViewDir = Normalize3dVector(resta(temp1, temp2));
+
+    RightVector = ProductoCruzado(ViewDir, UpVector);
+}
+
+function Move(Direction){
+   Position = suma(Position, Direction);
+}
+
+function MoveForward(Distance) {
+   // Position = Position + (ViewDir*-Distance);
+   Position = suma(Position, multiplicar(ViewDir , -Distance));
+}
+
+function StrafeRight(Distance){
+    Position = suma(Position , multiplicar(RightVector,Distance));
+}
+
+function MoveUpward(Distance) {
+   // Position = Position + (ViewDir*-Distance);
+   Position = suma(Position, multiplicar(UpVector , Distance));
+}
+
+function actualizar_vista(canvas, u_ViewMatrix){
+   var ViewPoint = F3dVector(0.0, 0.0, 0.0);
+   ViewPoint = suma(Position , ViewDir);
+
+   g_modelMatrix.setPerspective(30, (canvas.width)/(canvas.height), 0.1, 10000000);
+   g_modelMatrix.lookAt(Position.x,Position.y,Position.z,
+                         ViewPoint.x,ViewPoint.y,ViewPoint.z,
+                         UpVector.x,UpVector.y,UpVector.z);
+
+   //gl.uniformMatrix4fv(u_MvpMatrix, false, viewProjMatrix.elements);
+}
+//----------------------------------------------------------------------------------------------------
 
 
 function main() {
@@ -99,45 +251,38 @@ function main() {
 	}
 
     // Get the storage location of u_MvpMatrix
-    var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
-    if (!u_ModelMatrix) {
-      console.log('Failed to get the storage location of u_ModelMatrix');
+    var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
+    if (!u_MvpMatrix) {
+      console.log('Failed to get the storage location of u_MvpMatrix');
       return;
     }
 
-/*
+    /*
     var u_ViewMatrix = gl.getUniformLocation(gl.program, 'u_ViewMatrix');
     if (!u_ViewMatrix) {
       console.log('Failed to get the storage location of u_ViewMatrix');
       return;
     }
-/*
-    var u_ProjMatrix = gl.getUniformLocation(gl.program, 'u_ProjMatrix');
-    if (!u_ProjMatrix) {
-      console.log('Failed to get the storage location of u_ProjMatrix');
-      return;
-    }
-*/
+    */
 
+    //initMouseMotionCallback(canvas);
 
-    var viewMatrix = new Matrix4();   // View projection matrix
-    var modelMatrix = new Matrix4();  // Model matrix
-    var projMatrix = new Matrix4();    // Model view projection matrix
+    initKeyboardCallback(gl, canvas, u_MvpMatrix);
 
-    initMouseMotionCallback(canvas);
-
-    initKeyboardCallback();
-
+    //var viewMatrix = new Matrix4();   // View projection matrix
+    //var modelMatrix = new Matrix4();  // Model matrix
+    //var projMatrix = new Matrix4();    // Model view projection matrix
 
         //Cargar modelos-------------------------------------------------------------------------------------
         //cargar_perspectiva(gl, u_ProjMatrix, projMatrix, canvas);
 
+
         //cargar_vista(gl, u_ViewMatrix, viewMatrix);
 
-    var tick = function() {
+    //var tick = function() {
 
         //cargar_modelo(gl, u_ModelMatrix, u_ViewMatrix, modelMatrix, viewMatrix, canvas);
-        cargar_modelo(gl, u_ModelMatrix, modelMatrix, canvas);
+        display(gl, canvas, u_MvpMatrix);
 
         //---------------------------------------------------------------------------------------------------
 
@@ -148,70 +293,76 @@ function main() {
         //Dibujar--------------------------------------------------------------------------------------------
 
 
-        requestAnimationFrame(tick, canvas); // Request that the browser ?calls tick
+        //requestAnimationFrame(tick, canvas); // Request that the browser ?calls tick
         //---------------------------------------------------------------------------------------------------
-    };
-    tick();
+    //};
+    //tick();
 
 
 }
 
-function cargar_modelo(gl, u_ModelMatrix, modelMatrix, canvas) {
-//function cargar_modelo(gl, u_ModelMatrix, u_ViewMatrix, modelMatrix, viewMatrix, canvas) {
-    // Clear color and depth buffer
-    gl.clear(gl.COLOR_BUFFER_BIT);
+function display(gl, canvas, u_MvpMatrix){
+    actualizar_vista(canvas, u_MvpMatrix);
+    cargar_modelo(gl, canvas, u_MvpMatrix);
+}
 
-    //modelMatrix = new Matrix4();
+function cargar_vista(canvas){
 
-    modelMatrix.setPerspective(fov, (canvas.width)/(canvas.height), 0.1, 10000000);
+    g_modelMatrix.setPerspective(fov, (canvas.width)/(canvas.height), 0.1, 10000000);
 
-    modelMatrix.translate(-trackLeftRight, 0, 0);
+    g_modelMatrix.translate(-trackLeftRight, 0, 0);
 
     // Move the camera vertically.
     // We are moving the entire scene to the opposite direction of the camera motion.
-    modelMatrix.translate(0, -craneUpDown, 0);
+    g_modelMatrix.translate(0, -craneUpDown, 0);
 
     // Move the camera forward and backward.
     // We are moving the entire scene to the opposite direction of the camera motion.
-    modelMatrix.translate(0, 0, pushInPullOut);
+    g_modelMatrix.translate(0, 0, pushInPullOut);
 
     // Rotations must be done before translation.
 
     // Camera pitch
     // We are rotating the entire scene in the opposite direction.
-    modelMatrix.rotate(pitchAngle, 1, 0, 0);
+    g_modelMatrix.rotate(pitchAngle, 1, 0, 0);
 
     // Camera yaw
     // We are rotating the entire scene in the opposite direction.
-    modelMatrix.rotate(yawAngle, 0, 1, 0);
+    g_modelMatrix.rotate(yawAngle, 0, 1, 0);
 
     // Camera roll
     // We are rotating the entire scene in the opposite direction.
-    modelMatrix.rotate(rollAngle, 0, 0, 1);
+    g_modelMatrix.rotate(rollAngle, 0, 0, 1);
 
     //modelMatrix.lookAt(-trackLeftRight, -craneUpDown, pushInPullOut, 0, 0, 0, 0, 1, 0);
-    modelMatrix.lookAt(0, 0, 100, 0, 0, 0, 0, 1, 0);
-    //gl.uniformMatrix4fv(u_ModelMatrix, false, modelMatrix.elements);
+    g_modelMatrix.lookAt(0, 100, 200, 0, 0, 0, 0, 1, 0);
+}
 
-    //modelMatrix.rotate(180,0, 1, 0);
-    //modelMatrix.rotate(180,1, 0, 0);
-    //modelMatrix.translate(0,-10,-100);
-    cuadrilatero(50,50, 1, gl, u_ModelMatrix, modelMatrix);
+function cargar_modelo(gl, canvas, u_MvpMatrix) {
+//function cargar_modelo(gl, u_ModelMatrix, u_ViewMatrix, modelMatrix, viewMatrix, canvas) {
+    // Clear color and depth buffer
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    //g_modelMatrix.setPerspective(fov, (canvas.width)/(canvas.height), 0.1, 10000000);
+    //g_modelMatrix.lookAt(0, 0, 100, 0, 0, 0, 0, 1, 0);
+
+    //g_modelMatrix.setTranslate(0,0,0);
+    //pushMatrix(g_modelMatrix);
+    //g_mvpMatrix.set(viewProjMatrix);
+    //g_mvpMatrix.multiply(g_modelMatrix);
+    cuadrilatero(50,50, 0, gl, u_MvpMatrix);
+    //g_modelMatrix = popMatrix();
 
     //modelMatrix = new Matrix4();
 
-    cuadrilatero(50,50, 0, gl, u_ModelMatrix, modelMatrix);
 
-    //modelMatrix.setIdentity();
-    //modelMatrix = new Matrix4();
-    modelMatrix.translate(-30,20,10);
-    cuadrilatero(50,50, 0, gl, u_ModelMatrix, modelMatrix);
+
+
 
 
 }
 
 
-function cuadrilatero(largo, ancho, tipo, gl, u_ModelMatrix, modelMatrix){
+function cuadrilatero(largo, ancho, tipo, gl, u_MvpMatrix){
     var l = largo / 2.0;
     var a = ancho / 2.0;
 
@@ -266,7 +417,7 @@ function cuadrilatero(largo, ancho, tipo, gl, u_ModelMatrix, modelMatrix){
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
     // Pass the model view projection matrix to u_MvpMatrix
-    gl.uniformMatrix4fv(u_ModelMatrix, false, modelMatrix.elements);
+    gl.uniformMatrix4fv(u_MvpMatrix, false, g_modelMatrix.elements);
 
 	loadTexture(gl, texture0, u_Sampler0, image0);
 	gl.drawArrays(gl.TRIANGLE_STRIP, 0, n);   // Draw the rectangle
@@ -341,6 +492,7 @@ function loadTexture(gl, texture, u_Sampler, image) {
   gl.uniform1i(u_Sampler, 0);   // Pass the texure unit to u_Sampler
  }
 
+/*
  // Register a keyboard callback function.
  function initKeyboardCallback() {
      document.onkeydown = function(event) {
@@ -379,6 +531,57 @@ function loadTexture(gl, texture, u_Sampler, image) {
                  break;
              default: return;
          }
+         console.log("xd");
+     }
+ }
+ */
+
+ function initKeyboardCallback(gl, canvas, u_MvpMatrix) {
+     document.onkeydown = function(event) {
+         switch(event.keyCode) {
+             case 82: // Use r or R to turn on/off camera rolling.
+                 MoveUpward(3.0);
+                 display(gl, canvas, u_MvpMatrix);
+                 break;
+             case 70: // Use a or A to turn on/off animation.
+                 MoveUpward(-3.0);
+                 display(gl, canvas, u_MvpMatrix);
+                 break;
+             case 38: // Use + key to zoom in.
+                 RotateX(5.0); // lower limit of fov
+                 display(gl, canvas, u_MvpMatrix);
+                 break;
+             case 40: // Use - key to zoom out.
+                 RotateX(-5.0); // lower limit of fov
+                 display(gl, canvas, u_MvpMatrix);
+                 break;
+             case 37: // Use left arrow to move the camera to the left.
+                 RotateY(5.0);
+                 display(gl, canvas, u_MvpMatrix);
+                 break;
+             case 39: // Use right arrow to move the camera to the right.
+                 RotateY(-5.0);
+                 display(gl, canvas, u_MvpMatrix);
+                 break;
+             case 87: // Use up arrow to move the camera forward.
+                 MoveForward(-1.0);
+                 display(gl, canvas, u_MvpMatrix);
+                 break;
+             case 83: // Use down arrow to move the camera backward.
+                 MoveForward(1.0);
+                 display(gl, canvas, u_MvpMatrix);
+                 break;
+             case 65: // Use u or U key to move the camera upward.
+                StrafeRight(-1.0);
+                display(gl, canvas, u_MvpMatrix);
+                break;
+             case 68: // Use d or D key to move the camera downward.
+                StrafeRight(1.0);
+                display(gl, canvas, u_MvpMatrix);
+                break;
+             default: return;
+         }
+         //console.log("xd");
      }
  }
 
@@ -450,4 +653,5 @@ function loadTexture(gl, texture, u_Sampler, image) {
          lastX = x;
          lastY = y;
      }
+
  }
